@@ -1,3 +1,10 @@
+沒問題！保留「單次臨時設定」確實非常實用，這樣當你偶爾需要設定一個不會每天重複的例外事件時，就不會把原本整理好的慣用清單弄亂了。
+
+我幫你把「單次設定」的區塊加回來了，並且套用了我們最新設計的 UI 排版，讓它跟底下的排程清單看起來有一致的設計感。你可以直接選擇時間、輸入內容，按「＋ 加入」就會立刻啟動，而且這個單次鬧鐘**不會**被存進你的慣用清單裡。
+
+請將 GitHub 上的 `index.html` 內容全部替換成以下這個兼具「單次」與「慣用批次」的完整版：
+
+```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -24,7 +31,7 @@
         .btn-batch { background-color: #6f42c1; font-size: 16px; padding: 15px;}
         .btn-batch:hover { background-color: #59339d; }
         
-        .btn-add { background-color: #28a745; width: auto; padding: 8px 15px; margin: 0; }
+        .btn-add { background-color: #28a745; width: auto; padding: 12px 15px; margin: 0; }
         .btn-add:hover { background-color: #218838; }
 
         /* 動態排程列的樣式 */
@@ -49,11 +56,22 @@
         <div id="permission-status" style="font-size: 13px; color: gray;">狀態：檢查中...</div>
     </div>
 
-    <!-- 動態列表區塊 -->
+    <!-- 模式一：單次精確設定 (不記憶) -->
+    <div class="section">
+        <h3>🔹 單次臨時排程</h3>
+        <p style="font-size: 13px; color: #666; margin-top: 5px;">這裡設定的鬧鐘加入後會立刻啟動，且不會存入慣用清單中。</p>
+        <div class="habit-row">
+            <input type="time" id="single-time" step="1">
+            <input type="text" id="single-message" placeholder="提醒內容 (例如: 臨時檢查加密貨幣合約)">
+            <button class="btn-add" onclick="setSingleAlarm()">＋ 加入</button>
+        </div>
+    </div>
+
+    <!-- 模式二：慣用排程清單 (自動記憶) -->
     <div class="section">
         <div class="header-flex">
             <h3>⚡ 慣用排程清單</h3>
-            <button class="btn-add" onclick="addHabitRow('', '')">＋ 新增</button>
+            <button class="btn-add" onclick="addHabitRow('', '')" style="padding: 8px 15px;">＋ 新增</button>
         </div>
         
         <div id="habit-rows-container">
@@ -102,14 +120,13 @@
         }
     }
 
-    // --- 動態 UI 與自動儲存邏輯 ---
+    // --- 動態 UI 與自動儲存邏輯 (針對慣用清單) ---
     function saveHabits() {
-        const rows = document.querySelectorAll('.habit-row');
+        const rows = document.querySelectorAll('#habit-rows-container .habit-row');
         const data = [];
         rows.forEach(row => {
             const time = row.children[0].value;
             const msg = row.children[1].value;
-            // 只要有填寫任何一格就記錄下來
             if (time || msg) {
                 data.push({ time, msg });
             }
@@ -122,15 +139,13 @@
         const row = document.createElement('div');
         row.className = 'habit-row';
 
-        // 1. 24小時制時間選擇器
         const timeInput = document.createElement('input');
         timeInput.type = 'time';
-        timeInput.step = '1'; // 允許選擇秒數
+        timeInput.step = '1'; 
         timeInput.value = timeVal;
-        timeInput.onchange = saveHabits; // 改變時自動存檔
+        timeInput.onchange = saveHabits; 
         timeInput.onkeyup = saveHabits;
 
-        // 2. 提醒內容輸入框
         const msgInput = document.createElement('input');
         msgInput.type = 'text';
         msgInput.placeholder = '提醒內容...';
@@ -138,13 +153,12 @@
         msgInput.onchange = saveHabits;
         msgInput.onkeyup = saveHabits;
 
-        // 3. 刪除按鈕
         const delBtn = document.createElement('button');
         delBtn.className = 'delete-btn';
         delBtn.innerHTML = '✖';
         delBtn.onclick = function() {
             container.removeChild(row);
-            saveHabits(); // 刪除後更新存檔
+            saveHabits(); 
         };
 
         row.appendChild(timeInput);
@@ -167,7 +181,7 @@
             }
         }
         
-        // 如果是第一次使用，給予預設範本
+        // 預設範本
         addHabitRow('08:50:00', '準備看盤');
         addHabitRow('09:00:00', '台股開盤');
         addHabitRow('13:30:00', '台股收盤');
@@ -224,16 +238,33 @@
         }, delayMs);
     }
 
-    // --- 讀取所有輸入框並啟動鬧鐘 ---
+    // --- 單次設定邏輯 ---
+    function setSingleAlarm() {
+        const timeVal = document.getElementById('single-time').value;
+        const messageVal = document.getElementById('single-message').value;
+
+        if (!timeVal || !messageVal) {
+            alert("請選擇時間並輸入提醒內容！");
+            return;
+        }
+
+        const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
+        registerAlarm(formattedTime, messageVal);
+
+        // 清空單次輸入框，方便下次使用
+        document.getElementById('single-time').value = '';
+        document.getElementById('single-message').value = '';
+    }
+
+    // --- 批次設定邏輯 ---
     function setBatchAlarms() {
-        const rows = document.querySelectorAll('.habit-row');
+        const rows = document.querySelectorAll('#habit-rows-container .habit-row');
         let addedCount = 0;
 
         rows.forEach(row => {
             const timeVal = row.children[0].value;
             const msgVal = row.children[1].value;
             
-            // 只有當時間與內容都填寫時，才啟動該鬧鐘
             if (timeVal && msgVal) {
                 const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
                 registerAlarm(formattedTime, msgVal);
@@ -242,7 +273,7 @@
         });
 
         if (addedCount > 0) {
-            alert(`✅ 成功啟動 ${addedCount} 個鬧鐘！請保持網頁開啟。`);
+            alert(`✅ 成功啟動 ${addedCount} 個慣用鬧鐘！請保持網頁開啟。`);
         } else {
             alert("⚠️ 啟動失敗：請確保排程中有填寫完整的「時間」與「提醒內容」。");
         }
@@ -251,3 +282,5 @@
 
 </body>
 </html>
+
+```
