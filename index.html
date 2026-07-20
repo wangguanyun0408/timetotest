@@ -1,1 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的專屬鬧鐘</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #alarms-list {
+            margin-top: 20px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
 
+<div class="container">
+    <h2>⏰ 設定提醒</h2>
+    
+    <!-- 要求通知權限的按鈕 -->
+    <button id="permission-btn" onclick="requestPermission()" style="background-color: #28a745;">1. 點擊允許系統通知 (彈窗必備)</button>
+    
+    <hr style="margin: 20px 0;">
+
+    <label>幾分鐘後提醒我？</label>
+    <input type="number" id="minutes" placeholder="例如: 10 或 0.1 (測試用)" step="0.1">
+    
+    <label>提醒內容：</label>
+    <input type="text" id="message" placeholder="例如: 記得關火、吃藥">
+    
+    <button onclick="setAlarm()">2. 新增鬧鐘</button>
+
+    <div id="alarms-list">
+        <h3>目前設定的鬧鐘：</h3>
+        <ul id="list"></ul>
+    </div>
+</div>
+
+<script>
+    // 1. 請求瀏覽器通知權限
+    function requestPermission() {
+        if ("Notification" in window) {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    alert("✅ 已成功開啟通知權限！");
+                    document.getElementById('permission-btn').style.display = 'none';
+                } else {
+                    alert("❌ 權限被拒絕，時間到時將以一般警告框顯示。");
+                }
+            });
+        } else {
+            alert("你的瀏覽器不支援通知功能。");
+        }
+    }
+
+    // 2. 設定鬧鐘功能
+    function setAlarm() {
+        const minutes = parseFloat(document.getElementById('minutes').value);
+        const message = document.getElementById('message').value;
+
+        if (!minutes || !message) {
+            alert("請輸入完整的時間與提醒內容！");
+            return;
+        }
+
+        // 計算毫秒數
+        const milliseconds = minutes * 60 * 1000;
+        
+        // 取得預計完成時間
+        const targetTime = new Date(new Date().getTime() + milliseconds);
+        const timeString = targetTime.toLocaleTimeString('zh-TW');
+
+        // 在畫面上新增一筆紀錄
+        const list = document.getElementById('list');
+        const listItem = document.createElement('li');
+        listItem.innerText = `[${timeString}] 將提醒：${message}`;
+        list.appendChild(listItem);
+
+        // 清空輸入框以便設定下一個
+        document.getElementById('minutes').value = '';
+        document.getElementById('message').value = '';
+
+        // 啟動倒數計時器
+        setTimeout(() => {
+            triggerAlarm(message);
+            listItem.style.textDecoration = 'line-through';
+            listItem.style.color = 'gray';
+        }, milliseconds);
+    }
+
+    // 3. 觸發鬧鐘（聲音 + 彈窗）
+    function triggerAlarm(message) {
+        // 播放提示音 (使用免費的開放音檔網址)
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.play();
+
+        // 觸發系統彈窗
+        if (Notification.permission === "granted") {
+            new Notification("⏰ 時間到！", {
+                body: message,
+            });
+        } else {
+            alert("⏰ 時間到：" + message);
+        }
+    }
+</script>
+
+</body>
+</html>
