@@ -3,134 +3,209 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的專屬鬧鐘</title>
+    <title>我的智能排程鬧鐘</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 500px;
-            margin: 50px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        input, button {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-            border: none;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        #alarms-list {
-            margin-top: 20px;
-            text-align: left;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background-color: #eef2f5; color: #333; }
+        .container { background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+        .section { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        .section:last-child { border-bottom: none; }
+        input[type="time"], input[type="text"], textarea, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+        textarea { resize: vertical; height: 150px; font-family: monospace; }
+        button { background-color: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
+        button:hover { background-color: #0056b3; }
+        #permission-btn { background-color: #28a745; margin-bottom: 5px; }
+        #permission-btn:hover { background-color: #218838; }
+        .btn-batch { background-color: #6f42c1; }
+        .btn-batch:hover { background-color: #59339d; }
+        #alarms-list ul { padding-left: 20px; }
+        li { margin-bottom: 8px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>⏰ 設定提醒</h2>
+    <h2 style="margin-top: 0;">⏰ 智能排程鬧鐘系統</h2>
     
-    <!-- 要求通知權限的按鈕 -->
-    <button id="permission-btn" onclick="requestPermission()" style="background-color: #28a745;">1. 點擊允許系統通知 (彈窗必備)</button>
-    
-    <hr style="margin: 20px 0;">
+    <!-- 權限區塊 -->
+    <div class="section" style="text-align: center;">
+        <button id="permission-btn" onclick="requestSystemPermission()">允許「系統通知」權限</button>
+        <div id="permission-status" style="font-size: 13px; color: gray;">狀態：檢查中...</div>
+    </div>
 
-    <label>幾分鐘後提醒我？</label>
-    <input type="number" id="minutes" placeholder="例如: 10 或 0.1 (測試用)" step="0.1">
-    
-    <label>提醒內容：</label>
-    <input type="text" id="message" placeholder="例如: 記得關火、吃藥">
-    
-    <button onclick="setAlarm()">2. 新增鬧鐘</button>
+    <!-- 模式一：單次精確設定 -->
+    <div class="section">
+        <h3>🔹 單次設定</h3>
+        <label>設定指定時間 (時:分:秒)：</label>
+        <input type="time" id="exact-time" step="1"> <!-- step="1" 允許選擇秒數 -->
+        <input type="text" id="single-message" placeholder="提醒內容 (例如: 準備上課)">
+        <button onclick="setSingleAlarm()">加入鬧鐘</button>
+    </div>
 
-    <div id="alarms-list">
-        <h3>目前設定的鬧鐘：</h3>
+    <!-- 模式二：批次與習慣記憶 -->
+    <div class="section">
+        <h3>⚡ 一鍵批次設定 (習慣記憶)</h3>
+        <label style="font-size: 14px; color: #555;">每行輸入一個鬧鐘，格式為 <b>HH:MM:SS 提醒內容</b>。系統會自動記憶你的清單！</label>
+        <textarea id="batch-input" placeholder="08:50:00 準備看盤&#10;09:00:00 台股開盤&#10;13:30:00 台股收盤&#10;20:00:00 Python 專案開發"></textarea>
+        <button class="btn-batch" onclick="setBatchAlarms()">一鍵設定全部</button>
+    </div>
+
+    <!-- 鬧鐘列表 -->
+    <div id="alarms-list" class="section">
+        <h3>📋 目前排程的鬧鐘：</h3>
         <ul id="list"></ul>
     </div>
 </div>
 
 <script>
-    // 1. 請求瀏覽器通知權限
-    function requestPermission() {
-        if ("Notification" in window) {
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    alert("✅ 已成功開啟通知權限！");
-                    document.getElementById('permission-btn').style.display = 'none';
-                } else {
-                    alert("❌ 權限被拒絕，時間到時將以一般警告框顯示。");
-                }
-            });
+    // --- 系統權限與初始化 ---
+    window.onload = function() {
+        checkPermissionStatus();
+        loadSavedHabits();
+    };
+
+    function checkPermissionStatus() {
+        const statusText = document.getElementById('permission-status');
+        const btn = document.getElementById('permission-btn');
+        if (!("Notification" in window)) {
+            statusText.innerText = "❌ 你的瀏覽器不支援系統通知";
+            statusText.style.color = "red";
+            btn.style.display = 'none';
+        } else if (Notification.permission === "granted") {
+            statusText.innerText = "✅ 系統通知已開啟";
+            statusText.style.color = "green";
+            btn.style.display = 'none';
         } else {
-            alert("你的瀏覽器不支援通知功能。");
+            statusText.innerText = "⚠️ 請點擊上方按鈕允許通知";
         }
     }
 
-    // 2. 設定鬧鐘功能
-    function setAlarm() {
-        const minutes = parseFloat(document.getElementById('minutes').value);
-        const message = document.getElementById('message').value;
+    function requestSystemPermission() {
+        if ("Notification" in window) {
+            Notification.requestPermission().then(permission => {
+                checkPermissionStatus();
+                if (permission === "granted") new Notification("✅ 系統通知已啟用！");
+            });
+        }
+    }
 
-        if (!minutes || !message) {
-            alert("請輸入完整的時間與提醒內容！");
+    // --- 核心時間計算邏輯 ---
+    function calculateDelay(targetTimeStr) {
+        const now = new Date();
+        const [hours, minutes, seconds] = targetTimeStr.split(':').map(Number);
+        
+        let target = new Date();
+        target.setHours(hours, minutes, seconds || 0, 0);
+
+        // 如果設定的時間已經過了，自動排到「明天」的同一時間
+        if (target.getTime() <= now.getTime()) {
+            target.setDate(target.getDate() + 1);
+        }
+        
+        return {
+            delayMs: target.getTime() - now.getTime(),
+            displayTime: target.toLocaleTimeString('zh-TW')
+        };
+    }
+
+    // --- 觸發鬧鐘 ---
+    function triggerSystemAlarm(message) {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.play().catch(e => console.log("音效播放被阻擋", e));
+
+        if ("Notification" in window && Notification.permission === "granted") {
+            const notification = new Notification("⏰ 時間到！", {
+                body: message,
+                icon: "https://cdn-icons-png.flaticon.com/512/864/864326.png"
+            });
+            notification.onclick = function() { window.focus(); this.close(); };
+        } else {
+            alert("⏰ 時間到：" + message);
+        }
+    }
+
+    // --- 畫面更新與計時器註冊 ---
+    function registerAlarm(timeStr, message) {
+        const { delayMs, displayTime } = calculateDelay(timeStr);
+        
+        const list = document.getElementById('list');
+        const listItem = document.createElement('li');
+        listItem.innerText = `[${displayTime}] ${message}`;
+        list.appendChild(listItem);
+
+        setTimeout(() => {
+            triggerSystemAlarm(message);
+            listItem.style.textDecoration = 'line-through';
+            listItem.style.color = 'gray';
+        }, delayMs);
+    }
+
+    // --- 單次設定 ---
+    function setSingleAlarm() {
+        const timeVal = document.getElementById('exact-time').value; // 格式如 14:30 或 14:30:15
+        const message = document.getElementById('single-message').value;
+
+        if (!timeVal || !message) {
+            alert("請選擇時間並輸入提醒內容！");
+            return;
+        }
+        
+        // 確保時間格式有秒數
+        const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
+        registerAlarm(formattedTime, message);
+        
+        document.getElementById('exact-time').value = '';
+        document.getElementById('single-message').value = '';
+    }
+
+    // --- 批次設定與習慣記憶 ---
+    function setBatchAlarms() {
+        const batchText = document.getElementById('batch-input').value;
+        if (!batchText.trim()) {
+            alert("請輸入批次鬧鐘清單！");
             return;
         }
 
-        // 計算毫秒數
-        const milliseconds = minutes * 60 * 1000;
-        
-        // 取得預計完成時間
-        const targetTime = new Date(new Date().getTime() + milliseconds);
-        const timeString = targetTime.toLocaleTimeString('zh-TW');
+        // 儲存使用者的習慣清單到瀏覽器本地
+        localStorage.setItem('myAlarmHabits', batchText);
 
-        // 在畫面上新增一筆紀錄
-        const list = document.getElementById('list');
-        const listItem = document.createElement('li');
-        listItem.innerText = `[${timeString}] 將提醒：${message}`;
-        list.appendChild(listItem);
+        const lines = batchText.split('\n');
+        let addedCount = 0;
 
-        // 清空輸入框以便設定下一個
-        document.getElementById('minutes').value = '';
-        document.getElementById('message').value = '';
+        lines.forEach(line => {
+            line = line.trim();
+            if (!line) return;
 
-        // 啟動倒數計時器
-        setTimeout(() => {
-            triggerAlarm(message);
-            listItem.style.textDecoration = 'line-through';
-            listItem.style.color = 'gray';
-        }, milliseconds);
+            // 解析格式：取第一段為時間，後面的全部為內容
+            const parts = line.split(/\s+/);
+            if (parts.length >= 2) {
+                const timeVal = parts[0];
+                const message = parts.slice(1).join(' ');
+                
+                // 簡易檢查時間格式 (需包含冒號)
+                if (timeVal.includes(':')) {
+                    const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
+                    registerAlarm(formattedTime, message);
+                    addedCount++;
+                }
+            }
+        });
+
+        if (addedCount > 0) {
+            alert(`✅ 成功一鍵設定 ${addedCount} 個鬧鐘！`);
+        } else {
+            alert("⚠️ 無法解析格式，請確保每行格式為「時間 內容」，例如：09:00:00 測試");
+        }
     }
 
-    // 3. 觸發鬧鐘（聲音 + 彈窗）
-    function triggerAlarm(message) {
-        // 播放提示音 (使用免費的開放音檔網址)
-        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-        audio.play();
-
-        // 觸發系統彈窗
-        if (Notification.permission === "granted") {
-            new Notification("⏰ 時間到！", {
-                body: message,
-            });
+    // --- 載入記憶的習慣 ---
+    function loadSavedHabits() {
+        const saved = localStorage.getItem('myAlarmHabits');
+        if (saved) {
+            document.getElementById('batch-input').value = saved;
         } else {
-            alert("⏰ 時間到：" + message);
+            // 如果是第一次使用，給予預設範本
+            document.getElementById('batch-input').value = 
+                "08:50:00 準備看盤\n09:00:00 台股開盤\n13:30:00 台股收盤\n20:00:00 Python 專案開發\n23:00:00 休息時間";
         }
     }
 </script>
