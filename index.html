@@ -9,14 +9,31 @@
         .container { background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
         .section { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
         .section:last-child { border-bottom: none; }
-        input[type="time"], input[type="text"], textarea, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
-        textarea { resize: vertical; height: 150px; font-family: monospace; }
-        button { background-color: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
+        
+        /* 標題與按鈕的排版 */
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header-flex h3 { margin: 0; }
+        
+        input[type="time"], input[type="text"], button { padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+        button { background-color: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; width: 100%; margin: 8px 0; }
         button:hover { background-color: #0056b3; }
+        
         #permission-btn { background-color: #28a745; margin-bottom: 5px; }
         #permission-btn:hover { background-color: #218838; }
-        .btn-batch { background-color: #6f42c1; }
+        
+        .btn-batch { background-color: #6f42c1; font-size: 16px; padding: 15px;}
         .btn-batch:hover { background-color: #59339d; }
+        
+        .btn-add { background-color: #28a745; width: auto; padding: 8px 15px; margin: 0; }
+        .btn-add:hover { background-color: #218838; }
+
+        /* 動態排程列的樣式 */
+        .habit-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .habit-row input[type="time"] { width: 140px; margin: 0; cursor: pointer; }
+        .habit-row input[type="text"] { flex-grow: 1; margin: 0; }
+        .habit-row .delete-btn { width: auto; background-color: #dc3545; padding: 12px 15px; margin: 0; font-size: 12px; }
+        .habit-row .delete-btn:hover { background-color: #c82333; }
+
         #alarms-list ul { padding-left: 20px; }
         li { margin-bottom: 8px; }
     </style>
@@ -24,7 +41,7 @@
 <body>
 
 <div class="container">
-    <h2 style="margin-top: 0;">⏰ 智能排程鬧鐘系統</h2>
+    <h2 style="margin-top: 0; text-align: center;">⏰ 智能排程鬧鐘系統</h2>
     
     <!-- 權限區塊 -->
     <div class="section" style="text-align: center;">
@@ -32,26 +49,23 @@
         <div id="permission-status" style="font-size: 13px; color: gray;">狀態：檢查中...</div>
     </div>
 
-    <!-- 模式一：單次精確設定 -->
+    <!-- 動態列表區塊 -->
     <div class="section">
-        <h3>🔹 單次設定</h3>
-        <label>設定指定時間 (時:分:秒)：</label>
-        <input type="time" id="exact-time" step="1"> <!-- step="1" 允許選擇秒數 -->
-        <input type="text" id="single-message" placeholder="提醒內容 (例如: 準備上課)">
-        <button onclick="setSingleAlarm()">加入鬧鐘</button>
-    </div>
-
-    <!-- 模式二：批次與習慣記憶 -->
-    <div class="section">
-        <h3>⚡ 一鍵批次設定 (習慣記憶)</h3>
-        <label style="font-size: 14px; color: #555;">每行輸入一個鬧鐘，格式為 <b>HH:MM:SS 提醒內容</b>。系統會自動記憶你的清單！</label>
-        <textarea id="batch-input" placeholder="08:50:00 準備看盤&#10;09:00:00 台股開盤&#10;13:30:00 台股收盤&#10;20:00:00 Python 專案開發"></textarea>
-        <button class="btn-batch" onclick="setBatchAlarms()">一鍵設定全部</button>
+        <div class="header-flex">
+            <h3>⚡ 慣用排程清單</h3>
+            <button class="btn-add" onclick="addHabitRow('', '')">＋ 新增</button>
+        </div>
+        
+        <div id="habit-rows-container">
+            <!-- 這裡的內容會由 JavaScript 動態產生 -->
+        </div>
+        
+        <button class="btn-batch" onclick="setBatchAlarms()">🚀 一鍵啟動清單內所有鬧鐘</button>
     </div>
 
     <!-- 鬧鐘列表 -->
     <div id="alarms-list" class="section">
-        <h3>📋 目前排程的鬧鐘：</h3>
+        <h3>📋 目前已啟動的鬧鐘：</h3>
         <ul id="list"></ul>
     </div>
 </div>
@@ -88,7 +102,79 @@
         }
     }
 
-    // --- 核心時間計算邏輯 ---
+    // --- 動態 UI 與自動儲存邏輯 ---
+    function saveHabits() {
+        const rows = document.querySelectorAll('.habit-row');
+        const data = [];
+        rows.forEach(row => {
+            const time = row.children[0].value;
+            const msg = row.children[1].value;
+            // 只要有填寫任何一格就記錄下來
+            if (time || msg) {
+                data.push({ time, msg });
+            }
+        });
+        localStorage.setItem('myUIHabits', JSON.stringify(data));
+    }
+
+    function addHabitRow(timeVal, messageVal) {
+        const container = document.getElementById('habit-rows-container');
+        const row = document.createElement('div');
+        row.className = 'habit-row';
+
+        // 1. 24小時制時間選擇器
+        const timeInput = document.createElement('input');
+        timeInput.type = 'time';
+        timeInput.step = '1'; // 允許選擇秒數
+        timeInput.value = timeVal;
+        timeInput.onchange = saveHabits; // 改變時自動存檔
+        timeInput.onkeyup = saveHabits;
+
+        // 2. 提醒內容輸入框
+        const msgInput = document.createElement('input');
+        msgInput.type = 'text';
+        msgInput.placeholder = '提醒內容...';
+        msgInput.value = messageVal;
+        msgInput.onchange = saveHabits;
+        msgInput.onkeyup = saveHabits;
+
+        // 3. 刪除按鈕
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '✖';
+        delBtn.onclick = function() {
+            container.removeChild(row);
+            saveHabits(); // 刪除後更新存檔
+        };
+
+        row.appendChild(timeInput);
+        row.appendChild(msgInput);
+        row.appendChild(delBtn);
+        container.appendChild(row);
+    }
+
+    function loadSavedHabits() {
+        const saved = localStorage.getItem('myUIHabits');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                if (data.length > 0) {
+                    data.forEach(item => addHabitRow(item.time, item.msg));
+                    return;
+                }
+            } catch (e) {
+                console.log("讀取紀錄失敗", e);
+            }
+        }
+        
+        // 如果是第一次使用，給予預設範本
+        addHabitRow('08:50:00', '準備看盤');
+        addHabitRow('09:00:00', '台股開盤');
+        addHabitRow('13:30:00', '台股收盤');
+        addHabitRow('20:00:00', 'Python 專案開發');
+    }
+
+    // --- 核心時間計算與觸發邏輯 ---
     function calculateDelay(targetTimeStr) {
         const now = new Date();
         const [hours, minutes, seconds] = targetTimeStr.split(':').map(Number);
@@ -96,18 +182,18 @@
         let target = new Date();
         target.setHours(hours, minutes, seconds || 0, 0);
 
-        // 如果設定的時間已經過了，自動排到「明天」的同一時間
         if (target.getTime() <= now.getTime()) {
             target.setDate(target.getDate() + 1);
         }
         
+        const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+        
         return {
             delayMs: target.getTime() - now.getTime(),
-            displayTime: target.toLocaleTimeString('zh-TW')
+            displayTime: target.toLocaleTimeString('zh-TW', timeOptions)
         };
     }
 
-    // --- 觸發鬧鐘 ---
     function triggerSystemAlarm(message) {
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audio.play().catch(e => console.log("音效播放被阻擋", e));
@@ -123,7 +209,6 @@
         }
     }
 
-    // --- 畫面更新與計時器註冊 ---
     function registerAlarm(timeStr, message) {
         const { delayMs, displayTime } = calculateDelay(timeStr);
         
@@ -139,73 +224,27 @@
         }, delayMs);
     }
 
-    // --- 單次設定 ---
-    function setSingleAlarm() {
-        const timeVal = document.getElementById('exact-time').value; // 格式如 14:30 或 14:30:15
-        const message = document.getElementById('single-message').value;
-
-        if (!timeVal || !message) {
-            alert("請選擇時間並輸入提醒內容！");
-            return;
-        }
-        
-        // 確保時間格式有秒數
-        const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
-        registerAlarm(formattedTime, message);
-        
-        document.getElementById('exact-time').value = '';
-        document.getElementById('single-message').value = '';
-    }
-
-    // --- 批次設定與習慣記憶 ---
+    // --- 讀取所有輸入框並啟動鬧鐘 ---
     function setBatchAlarms() {
-        const batchText = document.getElementById('batch-input').value;
-        if (!batchText.trim()) {
-            alert("請輸入批次鬧鐘清單！");
-            return;
-        }
-
-        // 儲存使用者的習慣清單到瀏覽器本地
-        localStorage.setItem('myAlarmHabits', batchText);
-
-        const lines = batchText.split('\n');
+        const rows = document.querySelectorAll('.habit-row');
         let addedCount = 0;
 
-        lines.forEach(line => {
-            line = line.trim();
-            if (!line) return;
-
-            // 解析格式：取第一段為時間，後面的全部為內容
-            const parts = line.split(/\s+/);
-            if (parts.length >= 2) {
-                const timeVal = parts[0];
-                const message = parts.slice(1).join(' ');
-                
-                // 簡易檢查時間格式 (需包含冒號)
-                if (timeVal.includes(':')) {
-                    const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
-                    registerAlarm(formattedTime, message);
-                    addedCount++;
-                }
+        rows.forEach(row => {
+            const timeVal = row.children[0].value;
+            const msgVal = row.children[1].value;
+            
+            // 只有當時間與內容都填寫時，才啟動該鬧鐘
+            if (timeVal && msgVal) {
+                const formattedTime = timeVal.split(':').length === 2 ? `${timeVal}:00` : timeVal;
+                registerAlarm(formattedTime, msgVal);
+                addedCount++;
             }
         });
 
         if (addedCount > 0) {
-            alert(`✅ 成功一鍵設定 ${addedCount} 個鬧鐘！`);
+            alert(`✅ 成功啟動 ${addedCount} 個鬧鐘！請保持網頁開啟。`);
         } else {
-            alert("⚠️ 無法解析格式，請確保每行格式為「時間 內容」，例如：09:00:00 測試");
-        }
-    }
-
-    // --- 載入記憶的習慣 ---
-    function loadSavedHabits() {
-        const saved = localStorage.getItem('myAlarmHabits');
-        if (saved) {
-            document.getElementById('batch-input').value = saved;
-        } else {
-            // 如果是第一次使用，給予預設範本
-            document.getElementById('batch-input').value = 
-                "08:50:00 準備看盤\n09:00:00 台股開盤\n13:30:00 台股收盤\n20:00:00 Python 專案開發\n23:00:00 休息時間";
+            alert("⚠️ 啟動失敗：請確保排程中有填寫完整的「時間」與「提醒內容」。");
         }
     }
 </script>
